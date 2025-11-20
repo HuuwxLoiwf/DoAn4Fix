@@ -135,38 +135,40 @@ import os
 import numpy as np
 from PIL import Image
 import onnxruntime as ort
-from django.conf import settings
 import urllib.request
 import logging
 
 logger = logging.getLogger(__name__)
 
-# ================== ĐƯỜNG DẪN & TẢI MODEL ==================
-MODEL_PATH = os.path.join(settings.BASE_DIR, "ml_models", "resnet50.onnx")
+# KHÔNG DÙNG settings.BASE_DIR ở đây nữa → tránh lỗi ImproperlyConfigured
+# Dùng đường dẫn tuyệt đối trong container Render
+MODEL_PATH = "/app/ml_models/resnet50.onnx"   # ← Render luôn mount project vào /app
 
 def _download_model():
     url = os.getenv("ONNX_MODEL_URL")
     if not url:
         raise RuntimeError("Thiếu ONNX_MODEL_URL trên Render!")
     if os.path.exists(MODEL_PATH):
+        logger.info("Model ONNX đã tồn tại, bỏ qua tải lại.")
         return
     logger.info("Đang tải ResNet50 ONNX từ Google Drive (~102MB)...")
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     urllib.request.urlretrieve(url, MODEL_PATH)
     logger.info("Tải model ONNX thành công!")
 
+# Tải model ngay khi file được import
 _download_model()
 
 # Tạo session ONNX
 session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
 input_name = session.get_inputs()[0].name
-from tensorflow.keras.applications.resnet50 import preprocess_input  # vẫn dùng được
 
-# ================== IMPORT MODEL SAU KHI DJANGO ĐÃ KHỞI ĐỘNG ==================
-# Dời xuống dưới cùng để tránh lỗi ImproperlyConfigured
-from .models import Image as ImageModel   # ← Đặt ở đây là an toàn 100%
+# Dùng preprocess của Keras (vẫn được, không cần settings)
+from tensorflow.keras.applications.resnet50 import preprocess_input
 
-# ================== SERVICE ==================
+# BÂY GIỜ MỚI IMPORT Django model → lúc này wsgi.py đã set DJANGO_SETTINGS_MODULE rồi
+from .models import Image as ImageModel
+
 class AIImageSearchService:
     def _extract_feature(self, pil_img):
         img = pil_img.resize((224, 224))
@@ -196,7 +198,7 @@ class AIImageSearchService:
                 if sim >= threshold:
                     results.append((img_obj, float(sim)))
             except Exception as e:
-                logger.error(f"Lỗi xử lý ảnh ID {getattr(img_obj, 'id', 'unknown')}: {e}")
+                logger.error(f"Lỗi xử lý ảnh: {e}")
                 continue
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:limit]

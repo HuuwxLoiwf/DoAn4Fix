@@ -136,54 +136,56 @@ import numpy as np
 from PIL import Image
 import onnxruntime as ort
 from django.conf import settings
-from .models import Image as ImageModel
+import urllib.request
+import logging
 
-# ========================================
-# TẢI MODEL ONNX TỪ GOOGLE DRIVE (tự động)
-# ========================================
+logger = logging.getLogger(__name__)
+
+# ================== ĐƯỜNG DẪN & TẢI MODEL ==================
 MODEL_PATH = os.path.join(settings.BASE_DIR, "ml_models", "resnet50.onnx")
 
 def _download_model():
-    import urllib.request, logging
-    logger = logging.getLogger(__name__)
     url = os.getenv("ONNX_MODEL_URL")
     if not url:
         raise RuntimeError("Thiếu ONNX_MODEL_URL trên Render!")
     if os.path.exists(MODEL_PATH):
         return
-    logger.info("Đang tải ResNet50 ONNX từ Google Drive (~98MB)...")
+    logger.info("Đang tải ResNet50 ONNX từ Google Drive (~102MB)...")
     os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
     urllib.request.urlretrieve(url, MODEL_PATH)
     logger.info("Tải model ONNX thành công!")
 
-# Tự động tải khi import file này lần đầu
 _download_model()
 
-# Tạo session ONNX (nhẹ hơn Keras 5-6 lần)
+# Tạo session ONNX
 session = ort.InferenceSession(MODEL_PATH, providers=['CPUExecutionProvider'])
-preprocess_input = __import__('tensorflow.keras.applications.resnet50', 
-                               fromlist=['preprocess_input']).preprocess_input
+input_name = session.get_inputs()[0].name
+from tensorflow.keras.applications.resnet50 import preprocess_input  # vẫn dùng được
 
+# ================== IMPORT MODEL SAU KHI DJANGO ĐÃ KHỞI ĐỘNG ==================
+# Dời xuống dưới cùng để tránh lỗi ImproperlyConfigured
+from .models import Image as ImageModel   # ← Đặt ở đây là an toàn 100%
+
+# ================== SERVICE ==================
 class AIImageSearchService:
     def _extract_feature(self, pil_img):
         img = pil_img.resize((224, 224))
         arr = np.array(img).astype('float32')
         arr = np.expand_dims(arr, axis=0)
-        arr = preprocess_input(arr)              # vẫn dùng hàm preprocess của ResNet50
-        features = session.run(None, {"input_1": arr})[0]  # tên input thường là input_1
+        arr = preprocess_input(arr)
+        features = session.run(None, {input_name: arr})[0]
         return features.flatten()
 
     def calculate_similarity(self, v1, v2):
-        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2))
+        return np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-8)
 
     def search_similar_images(self, query_image, threshold=0.7, limit=10):
         if isinstance(query_image, str):
             query_image = Image.open(query_image).convert('RGB')
-        elif hasattr(query_image, 'read'):  # UploadedFile
+        elif hasattr(query_image, 'read'):
             query_image = Image.open(query_image).convert('RGB')
 
         query_vec = self._extract_feature(query_image)
-
         results = []
         for img_obj in ImageModel.objects.all():
             try:
@@ -194,8 +196,8 @@ class AIImageSearchService:
                 if sim >= threshold:
                     results.append((img_obj, float(sim)))
             except Exception as e:
+                logger.error(f"Lỗi xử lý ảnh ID {getattr(img_obj, 'id', 'unknown')}: {e}")
                 continue
-
         results.sort(key=lambda x: x[1], reverse=True)
         return results[:limit]
 

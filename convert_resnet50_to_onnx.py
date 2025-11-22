@@ -75,9 +75,10 @@ def download_resnet50_onnx():
         print("✅ Model đã tồn tại!")
         return
     
-    url = "https://huggingface.co/qualcomm/ResNet50/resolve/main/ResNet50.onnx"
+    # URL từ ONNX Model Zoo chính thức
+    url = "https://github.com/onnx/models/raw/main/validated/vision/classification/resnet/model/resnet50-v2-7.onnx"
     
-    print(f"📥 Đang tải từ Hugging Face...")
+    print(f"📥 Đang tải từ ONNX Model Zoo...")
     urllib.request.urlretrieve(url, output_path)
     
     file_size = os.path.getsize(output_path) / (1024 * 1024)

@@ -98,6 +98,7 @@
 # image_search/models.py
 from django.db import models
 from django.contrib.auth.models import User
+from django.core.validators import FileExtensionValidator
 
 
 class Tag(models.Model):
@@ -119,7 +120,15 @@ class Image(models.Model):
     description = models.TextField(blank=True, null=True)
     
     # Lưu ảnh local
-    image_file = models.ImageField(upload_to='images/%Y/%m/%d/')
+    # image_file = models.ImageField(upload_to='images/%Y/%m/%d/')
+    image_file = models.ImageField(
+    upload_to='images/%Y/%m/%d/',
+    validators=[
+        FileExtensionValidator(
+            allowed_extensions=['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'tiff']
+        )
+    ]
+)
     thumbnail = models.ImageField(upload_to='thumbnails/%Y/%m/%d/', blank=True, null=True)
     
     # AI feature vector

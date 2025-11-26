@@ -149,3 +149,14 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
+GRIDFS_BUCKET_NAME = 'uploads'
+
+# Allowed image MIME types
+ALLOWED_IMAGE_TYPES = {
+    'image/jpeg': ['.jpg', '.jpeg'],
+    'image/png': ['.png'],
+    'image/webp': ['.webp'],
+    'image/gif': ['.gif'],
+    'image/bmp': ['.bmp'],
+    'image/tiff': ['.tiff', '.tif']
+}
